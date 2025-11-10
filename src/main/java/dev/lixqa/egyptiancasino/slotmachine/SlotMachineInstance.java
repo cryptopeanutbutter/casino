@@ -38,6 +38,8 @@ public class SlotMachineInstance {
     private final UUID machineId = UUID.randomUUID();
     private ItemDisplay bodyDisplay;
     private ItemDisplay[] reelDisplays;
+    private Transformation[] reelRestTransformations;
+    private float[] reelRotationSeeds;
     private ItemDisplay leverDisplay;
     private boolean spinning;
     private BukkitTask spinTask;
@@ -91,6 +93,8 @@ public class SlotMachineInstance {
             });
 
             reelDisplays = new ItemDisplay[3];
+            reelRestTransformations = new Transformation[3];
+            reelRotationSeeds = new float[3];
             double[][] reelOffsets = {
                     {-0.32, 1.35, 0.36},
                     {0.0, 1.35, 0.36},
@@ -103,19 +107,21 @@ public class SlotMachineInstance {
                 reelDisplays[i] = world.spawn(reelLocation, ItemDisplay.class, display -> {
                     display.setItemStack(manager.createReelItem(symbolModel));
                     display.setBillboard(Display.Billboard.FIXED);
-                    display.setInterpolationDuration(2);
+                    display.setInterpolationDuration(6);
                     display.setRotation(facingYaw, 0f);
                     display.setViewRange(1.3f);
                     display.setItemDisplayTransform(ItemDisplayTransform.FIXED);
                     markDisplay(display);
                 });
+                reelRestTransformations[i] = reelDisplays[i].getTransformation();
+                reelRotationSeeds[i] = ThreadLocalRandom.current().nextFloat() * 360f;
             }
 
             Location leverLocation = toWorldPosition(0.58, 1.2, 0.18);
             leverDisplay = world.spawn(leverLocation, ItemDisplay.class, display -> {
                 display.setItemStack(manager.createLeverItem());
                 display.setBillboard(Display.Billboard.FIXED);
-                display.setInterpolationDuration(5);
+                display.setInterpolationDuration(8);
                 display.setRotation(facingYaw, 0f);
                 display.setViewRange(1.3f);
                 display.setItemDisplayTransform(ItemDisplayTransform.FIXED);
@@ -123,7 +129,7 @@ public class SlotMachineInstance {
             });
 
             leverRestTransformation = leverDisplay.getTransformation();
-            leverPulledTransformation = translate(leverRestTransformation, new Vector3f(0.0f, -0.25f, 0.05f));
+            leverPulledTransformation = tiltLever(leverRestTransformation);
             leverDisplay.setTransformation(leverRestTransformation);
             return true;
         } catch (Exception exception) {
@@ -163,6 +169,9 @@ public class SlotMachineInstance {
         pullLever();
 
         List<Integer> symbols = manager.getReelSymbolModels();
+        for (int i = 0; i < reelRotationSeeds.length; i++) {
+            reelRotationSeeds[i] = ThreadLocalRandom.current().nextFloat() * 360f;
+        }
         int[] indices = new int[reelDisplays.length];
         Arrays.setAll(indices, i -> ThreadLocalRandom.current().nextInt(symbols.size()));
         int[] finalModels = new int[reelDisplays.length];
@@ -177,30 +186,37 @@ public class SlotMachineInstance {
             public void run() {
                 tick++;
 
-                if (tick % 4 == 0) {
-                    for (int i = 0; i < reelDisplays.length; i++) {
-                        if ((i == 0 && firstStopped) || (i == 1 && secondStopped) || (i == 2 && thirdStopped)) {
-                            continue;
-                        }
+                for (int i = 0; i < reelDisplays.length; i++) {
+                    if ((i == 0 && firstStopped) || (i == 1 && secondStopped) || (i == 2 && thirdStopped)) {
+                        continue;
+                    }
+                    if (tick % 4 == 0) {
                         indices[i] = (indices[i] + 1) % symbols.size();
                         reelDisplays[i].setItemStack(manager.createReelItem(symbols.get(indices[i])));
                     }
+                    float baseSpeed = 22f;
+                    float easing = Math.min(1f, tick / 100f);
+                    float rotation = (tick * baseSpeed * easing) + reelRotationSeeds[i];
+                    applyReelRotation(i, rotation);
                 }
 
                 if (tick == 60 && !firstStopped) {
                     firstStopped = true;
                     finalModels[0] = symbols.get(indices[0]);
                     world.playSound(visual, Sound.BLOCK_NOTE_BLOCK_PLING, SoundCategory.BLOCKS, 0.6f, 1.2f);
+                    resetReelTransformation(0);
                 }
                 if (tick == 80 && !secondStopped) {
                     secondStopped = true;
                     finalModels[1] = symbols.get(indices[1]);
                     world.playSound(visual, Sound.BLOCK_NOTE_BLOCK_PLING, SoundCategory.BLOCKS, 0.6f, 1.4f);
+                    resetReelTransformation(1);
                 }
                 if (tick == 100 && !thirdStopped) {
                     thirdStopped = true;
                     finalModels[2] = symbols.get(indices[2]);
                     world.playSound(visual, Sound.BLOCK_NOTE_BLOCK_PLING, SoundCategory.BLOCKS, 0.6f, 1.6f);
+                    resetReelTransformation(2);
                     complete();
                 }
             }
@@ -294,12 +310,25 @@ public class SlotMachineInstance {
         };
     }
 
-    private Transformation translate(Transformation base, Vector3f delta) {
-        Vector3f translation = new Vector3f(base.getTranslation());
-        translation.add(delta);
+    private void applyReelRotation(int index, float rotationDegrees) {
+        ItemDisplay display = reelDisplays[index];
+        Transformation base = reelRestTransformations[index];
         Quaternionf leftRotation = new Quaternionf(base.getLeftRotation());
-        Vector3f scale = new Vector3f(base.getScale());
-        Quaternionf rightRotation = new Quaternionf(base.getRightRotation());
-        return new Transformation(translation, leftRotation, scale, rightRotation);
+        leftRotation.rotateY((float) Math.toRadians(rotationDegrees));
+        Transformation transformation = new Transformation(new Vector3f(base.getTranslation()), leftRotation, new Vector3f(base.getScale()), new Quaternionf(base.getRightRotation()));
+        display.setTransformation(transformation);
     }
+
+    private void resetReelTransformation(int index) {
+        reelDisplays[index].setTransformation(reelRestTransformations[index]);
+    }
+
+    private Transformation tiltLever(Transformation base) {
+        Vector3f translation = new Vector3f(base.getTranslation());
+        translation.add(0.0f, -0.12f, 0.05f);
+        Quaternionf leftRotation = new Quaternionf(base.getLeftRotation());
+        leftRotation.rotateX((float) Math.toRadians(-35f));
+        return new Transformation(translation, leftRotation, new Vector3f(base.getScale()), new Quaternionf(base.getRightRotation()));
+    }
+
 }
