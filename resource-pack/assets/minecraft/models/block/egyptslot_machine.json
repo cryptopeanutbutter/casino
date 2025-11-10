@@ -1,0 +1,22 @@
+{
+  "_comment": "Main slot machine body model. Replace texture paths with final artwork.",
+  "parent": "block/block",
+  "textures": {
+    "body": "block/egyptslot_machine",
+    "glow": "block/egyptslot_machine_glow"
+  },
+  "elements": [
+    {
+      "from": [1, 0, 1],
+      "to": [15, 16, 15],
+      "faces": {
+        "north": {"texture": "#body"},
+        "south": {"texture": "#body"},
+        "east": {"texture": "#body"},
+        "west": {"texture": "#body"},
+        "up": {"texture": "#glow"},
+        "down": {"texture": "#body"}
+      }
+    }
+  ]
+}

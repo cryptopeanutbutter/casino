@@ -1,0 +1,17 @@
+name: EgyptianCasino
+main: dev.lixqa.egyptiancasino.EgyptianCasinoPlugin
+version: 1.0.0
+api-version: 1.20
+softdepend: [CrystalMath, AmethystControl]
+commands:
+  egyptiancasino:
+    description: Egyptian Casino games and utilities
+    aliases: [ecasino, casino]
+    usage: /<command> <balance|slots|blackjack|dice|spawnpriest|givetokens>
+  giveslot:
+    description: Spawn a Pharaoh Slot Machine placement item
+    usage: /giveslot [amount]
+permissions:
+  egyptiancasino.admin:
+    description: Allows managing the Priest of Ra NPC and casino admin utilities
+    default: op

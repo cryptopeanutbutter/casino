@@ -1,0 +1,21 @@
+{
+  "_comment": "First reel segment. Swap texture to your animated atlas frame 1.",
+  "parent": "block/block",
+  "textures": {
+    "texture": "block/slot_reel_1"
+  },
+  "elements": [
+    {
+      "from": [4, 4, 7],
+      "to": [12, 12, 9],
+      "faces": {
+        "north": {"texture": "#texture"},
+        "south": {"texture": "#texture"},
+        "east": {"texture": "#texture"},
+        "west": {"texture": "#texture"},
+        "up": {"texture": "#texture"},
+        "down": {"texture": "#texture"}
+      }
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "_comment": "Lever geometry. Attach animation controllers to rotate on pull.",
+  "parent": "block/block",
+  "textures": {
+    "lever": "block/slot_lever"
+  },
+  "elements": [
+    {
+      "from": [12, 6, 7],
+      "to": [14, 14, 9],
+      "faces": {
+        "north": {"texture": "#lever"},
+        "south": {"texture": "#lever"},
+        "east": {"texture": "#lever"},
+        "west": {"texture": "#lever"},
+        "up": {"texture": "#lever"},
+        "down": {"texture": "#lever"}
+      }
+    }
+  ]
+}

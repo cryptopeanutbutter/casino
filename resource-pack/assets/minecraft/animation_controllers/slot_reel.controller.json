@@ -1,0 +1,23 @@
+{
+  "format_version": "1.10.0",
+  "animation_controllers": {
+    "controller.animation.slot_reel": {
+      "states": {
+        "idle": {
+          "animations": [],
+          "transitions": [
+            { "spin": "variable.slot_machine_reel_spin > 0.5" }
+          ]
+        },
+        "spin": {
+          "animations": [
+            "animation.slot_reel.spin"
+          ],
+          "transitions": [
+            { "idle": "query.all_animations_finished" }
+          ]
+        }
+      }
+    }
+  }
+}

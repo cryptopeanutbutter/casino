@@ -1,0 +1,13 @@
+{
+  "_comment": "Override for Egyptian Tokens using CustomModelData 1010.",
+  "parent": "item/generated",
+  "textures": {
+    "layer0": "item/gold_nugget"
+  },
+  "overrides": [
+    {
+      "predicate": {"custom_model_data": 1010},
+      "model": "item/egypt_token"
+    }
+  ]
+}

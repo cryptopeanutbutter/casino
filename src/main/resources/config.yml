@@ -1,0 +1,8 @@
+# Number of Egyptian Tokens granted per minted crystal redeemed with the Priest of Ra
+tokens-per-crystal: 1
+
+priest:
+  # When true, spawned priests will be frozen in place and cannot walk away.
+  disable-movement: true
+  # Make the Priest of Ra invulnerable to damage.
+  invulnerable: true

@@ -1,0 +1,7 @@
+{
+  "_comment": "Replace textures/item/egypt_token.png with your artwork (recommended 32x32+).",
+  "parent": "item/generated",
+  "textures": {
+    "layer0": "item/egypt_token"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "_comment": "Second reel segment. Replace texture with atlas frame 2.",
+  "parent": "block/block",
+  "textures": {
+    "texture": "block/slot_reel_2"
+  },
+  "elements": [
+    {
+      "from": [4, 4, 7],
+      "to": [12, 12, 9],
+      "faces": {
+        "north": {"texture": "#texture"},
+        "south": {"texture": "#texture"},
+        "east": {"texture": "#texture"},
+        "west": {"texture": "#texture"},
+        "up": {"texture": "#texture"},
+        "down": {"texture": "#texture"}
+      }
+    }
+  ]
+}
