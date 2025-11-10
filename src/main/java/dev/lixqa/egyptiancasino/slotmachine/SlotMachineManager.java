@@ -108,26 +108,30 @@ public class SlotMachineManager implements Listener, CommandExecutor, TabComplet
         event.setCancelled(true);
         Player player = event.getPlayer();
         Location clicked = event.getClickedBlock().getRelative(event.getBlockFace()).getLocation();
-        if (!canPlace(clicked)) {
+        BlockFace facing = resolveFacing(player);
+        if (!canPlace(clicked, facing)) {
             plugin.sendMessage(player, Component.text("There is not enough room to place the Slot Machine.", NamedTextColor.RED));
             return;
         }
 
-        if (findByBlock(clicked).isPresent()) {
-            plugin.sendMessage(player, Component.text("A Slot Machine is already placed here.", NamedTextColor.RED));
-            return;
+        List<Location> preview = SlotMachineInstance.previewStructure(clicked.toBlockLocation(), facing);
+        for (Location location : preview) {
+            if (findByBlock(location).isPresent()) {
+                plugin.sendMessage(player, Component.text("A Slot Machine is already placed here.", NamedTextColor.RED));
+                return;
+            }
         }
 
-        SlotMachineInstance instance = new SlotMachineInstance(plugin, this, player.getUniqueId(), clicked.toBlockLocation(), resolveFacing(player));
+        SlotMachineInstance instance = new SlotMachineInstance(plugin, this, player.getUniqueId(), clicked.toBlockLocation(), facing);
         if (!instance.spawn()) {
             plugin.sendMessage(player, Component.text("Failed to create the Slot Machine. Check console for errors.", NamedTextColor.RED));
             return;
         }
 
         machines.put(instance.getMachineId(), instance);
-        Location base = clicked.toBlockLocation();
-        machinesByBlock.put(blockKey(base), instance.getMachineId());
-        machinesByBlock.put(blockKey(base.clone().add(0, 1, 0)), instance.getMachineId());
+        for (Location location : instance.getTrackedBlocks()) {
+            machinesByBlock.put(blockKey(location), instance.getMachineId());
+        }
 
         stack.subtract(1);
         plugin.sendMessage(player, Component.text("Placed a Slot Machine. Only you can break it while sneaking.", NamedTextColor.GOLD));
@@ -156,11 +160,17 @@ public class SlotMachineManager implements Listener, CommandExecutor, TabComplet
         return face.getOppositeFace();
     }
 
-    private boolean canPlace(Location base) {
+    private boolean canPlace(Location base, BlockFace facing) {
         if (!base.getChunk().isLoaded()) {
             base.getChunk().load();
         }
-        return base.getBlock().isEmpty() && base.clone().add(0, 1, 0).getBlock().isEmpty();
+        Location origin = base.toBlockLocation();
+        for (Location location : SlotMachineInstance.previewStructure(origin, facing)) {
+            if (!location.getBlock().isEmpty()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @EventHandler
@@ -277,16 +287,25 @@ public class SlotMachineManager implements Listener, CommandExecutor, TabComplet
     private void playJackpotCelebration(World world, Location displayLocation) {
         world.playSound(displayLocation, Sound.BLOCK_BEACON_ACTIVATE, SoundCategory.BLOCKS, 1.5f, 1.0f);
         world.playSound(displayLocation, Sound.ENTITY_GHAST_SHOOT, SoundCategory.RECORDS, 0.6f, 0.6f);
+        world.playSound(displayLocation, Sound.ENTITY_ENDER_DRAGON_DEATH, SoundCategory.RECORDS, 1.3f, 0.9f);
         plugin.getServer().getScheduler().runTaskLater(plugin, () ->
                 world.playSound(displayLocation, Sound.MUSIC_DRAGON, SoundCategory.RECORDS, 0.7f, 1.3f), 6L);
         plugin.getServer().getScheduler().runTaskLater(plugin, () ->
                 world.playSound(displayLocation, Sound.MUSIC_END, SoundCategory.RECORDS, 0.5f, 0.8f), 14L);
-        world.spawnParticle(Particle.FIREWORKS_SPARK, displayLocation, 140, 0.6, 0.9, 0.6, 0.07);
-        world.spawnParticle(Particle.FLAME, displayLocation, 90, 0.5, 0.7, 0.5, 0.04);
-        world.spawnParticle(Particle.SOUL_FIRE_FLAME, displayLocation, 70, 0.45, 0.75, 0.45, 0.03);
-        world.spawnParticle(Particle.CLOUD, displayLocation, 35, 0.55, 0.8, 0.55, 0.02);
-        world.spawnParticle(Particle.EXPLOSION_LARGE, displayLocation, 4, 0.2, 0.3, 0.2, 0.0);
-        world.spawnParticle(Particle.BLOCK_CRACK, displayLocation, 45, 0.45, 0.6, 0.45, 0.06, Material.MAGMA_BLOCK.createBlockData());
+        plugin.getServer().getScheduler().runTaskLater(plugin, () ->
+                world.playSound(displayLocation, Sound.MUSIC_CREDITS, SoundCategory.RECORDS, 0.6f, 1.05f), 34L);
+        world.spawnParticle(Particle.FIREWORKS_SPARK, displayLocation, 1400, 0.6, 1.0, 0.6, 0.08);
+        world.spawnParticle(Particle.FLAME, displayLocation, 900, 0.5, 0.85, 0.5, 0.05);
+        world.spawnParticle(Particle.SOUL_FIRE_FLAME, displayLocation, 700, 0.45, 0.85, 0.45, 0.04);
+        world.spawnParticle(Particle.DRAGON_BREATH, displayLocation, 520, 0.6, 1.1, 0.6, 0.01);
+        world.spawnParticle(Particle.END_ROD, displayLocation, 420, 0.5, 0.95, 0.5, 0.02);
+        world.spawnParticle(Particle.FLASH, displayLocation, 60, 0.3, 0.5, 0.3, 0.0);
+        world.spawnParticle(Particle.LAVA, displayLocation, 150, 0.4, 0.6, 0.4, 0.03);
+        world.spawnParticle(Particle.CLOUD, displayLocation, 350, 0.6, 0.9, 0.6, 0.02);
+        world.spawnParticle(Particle.EXPLOSION_LARGE, displayLocation, 40, 0.25, 0.35, 0.25, 0.0);
+        world.spawnParticle(Particle.BLOCK_CRACK, displayLocation, 450, 0.5, 0.7, 0.5, 0.07, Material.MAGMA_BLOCK.createBlockData());
+        world.spawnParticle(Particle.GLOW, displayLocation, 520, 0.55, 0.85, 0.55, 0.05);
+        world.spawnParticle(Particle.TOTEM, displayLocation, 110, 0.35, 0.6, 0.35, 0.04);
     }
 
     public ItemStack createReelItem(SlotSymbol symbol) {
@@ -311,9 +330,9 @@ public class SlotMachineManager implements Listener, CommandExecutor, TabComplet
 
     public void removeMachine(SlotMachineInstance instance, boolean dropItem) {
         machines.remove(instance.getMachineId());
-        Location baseLocation = instance.getBaseLocation();
-        machinesByBlock.remove(blockKey(baseLocation));
-        machinesByBlock.remove(blockKey(baseLocation.clone().add(0, 1, 0)));
+        for (Location location : instance.getTrackedBlocks()) {
+            machinesByBlock.remove(blockKey(location));
+        }
         instance.despawn();
         if (dropItem) {
             ItemStack item = createSlotMachineItem(1);

@@ -22,7 +22,10 @@ import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
@@ -45,6 +48,19 @@ public class SlotMachineInstance {
     private BukkitTask leverResetTask;
     private Transformation leverRestTransformation;
     private Transformation leverPulledTransformation;
+    private final Set<Location> occupiedBlocks = new LinkedHashSet<>();
+
+    private static final List<BlockPlacement> STRUCTURE_BLOCKS = List.of(
+            new BlockPlacement(-1, 0, 0, Material.SAND),
+            new BlockPlacement(0, 0, 0, Material.SAND),
+            new BlockPlacement(1, 0, 0, Material.SAND),
+            new BlockPlacement(-1, 1, 0, Material.GLASS),
+            new BlockPlacement(0, 1, 0, Material.GLASS),
+            new BlockPlacement(1, 1, 0, Material.GLASS),
+            new BlockPlacement(-1, 2, 0, Material.SAND),
+            new BlockPlacement(0, 2, 0, Material.SAND),
+            new BlockPlacement(1, 2, 0, Material.SAND)
+    );
 
     public SlotMachineInstance(EgyptianCasinoPlugin plugin, SlotMachineManager manager, UUID owner, Location baseLocation, BlockFace facing) {
         this.plugin = plugin;
@@ -68,7 +84,7 @@ public class SlotMachineInstance {
     }
 
     public Location getVisualLocation() {
-        return toWorldPosition(0.0, 1.35, 0.25);
+        return toWorldPosition(0.0, 1.45, 0.25);
     }
 
     public boolean spawn() {
@@ -77,16 +93,20 @@ public class SlotMachineInstance {
             if (world == null) {
                 return false;
             }
-            baseLocation.getBlock().setType(Material.SAND);
-            baseLocation.clone().add(0, 1, 0).getBlock().setType(Material.GLASS);
+            occupiedBlocks.clear();
+            for (BlockPlacement placement : STRUCTURE_BLOCKS) {
+                Location blockLocation = blockLocation(placement.offsetX(), placement.offsetY(), placement.offsetZ());
+                blockLocation.getBlock().setType(placement.material());
+                occupiedBlocks.add(blockLocation);
+            }
 
             reelDisplays = new ItemDisplay[3];
             reelRestTransformations = new Transformation[3];
             reelRotationSeeds = new float[3];
             double[][] reelOffsets = {
-                    {-0.26, 1.36, 0.18},
-                    {0.0, 1.36, 0.18},
-                    {0.26, 1.36, 0.18}
+                    {-1.0, 1.36, 0.12},
+                    {0.0, 1.36, 0.12},
+                    {1.0, 1.36, 0.12}
             };
             for (int i = 0; i < reelDisplays.length; i++) {
                 double[] offsets = reelOffsets[i];
@@ -105,7 +125,7 @@ public class SlotMachineInstance {
                 reelRotationSeeds[i] = ThreadLocalRandom.current().nextFloat() * 360f;
             }
 
-            Location leverLocation = toWorldPosition(0.52, 1.45, -0.05);
+            Location leverLocation = toWorldPosition(1.45, 1.6, -0.05);
             leverDisplay = world.spawn(leverLocation, ItemDisplay.class, display -> {
                 display.setItemStack(manager.createLeverItem());
                 display.setBillboard(Display.Billboard.FIXED);
@@ -122,8 +142,7 @@ public class SlotMachineInstance {
             return true;
         } catch (Exception exception) {
             plugin.getLogger().severe("Unable to spawn Slot Machine: " + exception.getMessage());
-            baseLocation.getBlock().setType(Material.AIR);
-            baseLocation.clone().add(0, 1, 0).getBlock().setType(Material.AIR);
+            clearStructureBlocks();
             return false;
         }
     }
@@ -267,8 +286,7 @@ public class SlotMachineInstance {
         if (leverDisplay != null) {
             leverDisplay.remove();
         }
-        baseLocation.getBlock().setType(Material.AIR);
-        baseLocation.clone().add(0, 1, 0).getBlock().setType(Material.AIR);
+        clearStructureBlocks();
     }
 
     private Location toWorldPosition(double offsetX, double offsetY, double offsetZ) {
@@ -276,13 +294,13 @@ public class SlotMachineInstance {
         return baseLocation.clone().add(0.5 + rotated[0], offsetY, 0.5 + rotated[1]);
     }
 
+    private Location blockLocation(int offsetX, int offsetY, int offsetZ) {
+        double[] rotated = rotate(offsetX, offsetZ);
+        return baseLocation.clone().add(rotated[0], offsetY, rotated[1]).toBlockLocation();
+    }
+
     private double[] rotate(double offsetX, double offsetZ) {
-        double radians = Math.toRadians(facingYaw);
-        double cos = Math.cos(radians);
-        double sin = Math.sin(radians);
-        double worldX = offsetX * cos - offsetZ * sin;
-        double worldZ = offsetX * sin + offsetZ * cos;
-        return new double[]{worldX, worldZ};
+        return rotate(offsetX, offsetZ, facingYaw);
     }
 
     private static float yawForFacing(BlockFace face) {
@@ -313,17 +331,18 @@ public class SlotMachineInstance {
         Vector3f forward = forwardVector();
         Vector3f right = new Vector3f(forward.z, 0f, -forward.x).normalize();
         Vector3f translation = new Vector3f(base.getTranslation());
-        translation.add(new Vector3f(right).mul(0.12f));
-        translation.add(0f, 0.04f, 0f);
+        translation.add(new Vector3f(right).mul(0.18f));
+        translation.add(0f, 0.12f, 0f);
         Quaternionf leftRotation = new Quaternionf(base.getLeftRotation());
-        leftRotation.rotateAxis((float) Math.toRadians(-20f), right.x, right.y, right.z);
+        leftRotation.rotateAxis((float) Math.toRadians(-90f), right.x, right.y, right.z);
+        leftRotation.rotateAxis((float) Math.toRadians(12f), forward.x, forward.y, forward.z);
         if (pulled) {
-            translation.add(new Vector3f(forward).mul(-0.16f));
-            translation.add(0f, -0.12f, 0f);
-            leftRotation.rotateAxis((float) Math.toRadians(60f), right.x, right.y, right.z);
-            leftRotation.rotateAxis((float) Math.toRadians(-8f), forward.x, forward.y, forward.z);
+            translation.add(new Vector3f(forward).mul(-0.28f));
+            translation.add(0f, -0.18f, 0f);
+            leftRotation.rotateAxis((float) Math.toRadians(55f), right.x, right.y, right.z);
+            leftRotation.rotateAxis((float) Math.toRadians(-18f), forward.x, forward.y, forward.z);
         } else {
-            leftRotation.rotateAxis((float) Math.toRadians(6f), forward.x, forward.y, forward.z);
+            leftRotation.rotateAxis((float) Math.toRadians(4f), forward.x, forward.y, forward.z);
         }
         return new Transformation(translation, leftRotation, new Vector3f(base.getScale()), new Quaternionf(base.getRightRotation()));
     }
@@ -333,5 +352,44 @@ public class SlotMachineInstance {
         float x = -(float) Math.sin(radians);
         float z = (float) Math.cos(radians);
         return new Vector3f(x, 0f, z).normalize();
+    }
+
+    private void clearStructureBlocks() {
+        for (Location location : occupiedBlocks) {
+            location.getBlock().setType(Material.AIR);
+        }
+        occupiedBlocks.clear();
+    }
+
+    public List<Location> getTrackedBlocks() {
+        return occupiedBlocks.stream().map(Location::clone).collect(Collectors.toList());
+    }
+
+    public static List<Location> previewStructure(Location base, BlockFace facing) {
+        Location origin = base.toBlockLocation();
+        float yaw = yawForFacing(facing);
+        Set<String> seen = new LinkedHashSet<>();
+        List<Location> locations = new ArrayList<>();
+        for (BlockPlacement placement : STRUCTURE_BLOCKS) {
+            double[] rotated = rotate((double) placement.offsetX(), (double) placement.offsetZ(), yaw);
+            Location location = origin.clone().add(rotated[0], placement.offsetY(), rotated[1]).toBlockLocation();
+            String key = location.getWorld().getUID() + ":" + location.getBlockX() + ":" + location.getBlockY() + ":" + location.getBlockZ();
+            if (seen.add(key)) {
+                locations.add(location);
+            }
+        }
+        return locations;
+    }
+
+    private static double[] rotate(double offsetX, double offsetZ, float yawDegrees) {
+        double radians = Math.toRadians(yawDegrees);
+        double cos = Math.cos(radians);
+        double sin = Math.sin(radians);
+        double worldX = offsetX * cos - offsetZ * sin;
+        double worldZ = offsetX * sin + offsetZ * cos;
+        return new double[]{worldX, worldZ};
+    }
+
+    private record BlockPlacement(int offsetX, int offsetY, int offsetZ, Material material) {
     }
 }
