@@ -34,13 +34,13 @@ public class SlotMachineManager implements Listener, CommandExecutor, TabComplet
     private final EgyptianCasinoPlugin plugin;
     private final Map<UUID, SlotMachineInstance> machines = new HashMap<>();
     private final Map<String, UUID> machinesByBlock = new HashMap<>();
-    private final List<Integer> reelSymbolModels = new ArrayList<>();
+    private final List<SlotSymbol> reelSymbols = new ArrayList<>();
     private final Random random = new Random();
 
     public SlotMachineManager(EgyptianCasinoPlugin plugin) {
         this.plugin = plugin;
         // Default reel symbols reference custom model data entries. Replace with your own IDs.
-        reelSymbolModels.addAll(EgyptSlots.createDefaultSymbolList());
+        reelSymbols.addAll(EgyptSlots.createDefaultSymbolList());
     }
 
     public ItemStack createSlotMachineItem(int amount) {
@@ -108,24 +108,30 @@ public class SlotMachineManager implements Listener, CommandExecutor, TabComplet
         event.setCancelled(true);
         Player player = event.getPlayer();
         Location clicked = event.getClickedBlock().getRelative(event.getBlockFace()).getLocation();
-        if (!canPlace(clicked)) {
+        BlockFace facing = resolveFacing(player);
+        if (!canPlace(clicked, facing)) {
             plugin.sendMessage(player, Component.text("There is not enough room to place the Slot Machine.", NamedTextColor.RED));
             return;
         }
 
-        if (findByBlock(clicked).isPresent()) {
-            plugin.sendMessage(player, Component.text("A Slot Machine is already placed here.", NamedTextColor.RED));
-            return;
+        List<Location> preview = SlotMachineInstance.previewStructure(clicked.toBlockLocation(), facing);
+        for (Location location : preview) {
+            if (findByBlock(location).isPresent()) {
+                plugin.sendMessage(player, Component.text("A Slot Machine is already placed here.", NamedTextColor.RED));
+                return;
+            }
         }
 
-        SlotMachineInstance instance = new SlotMachineInstance(plugin, this, player.getUniqueId(), clicked.toBlockLocation(), resolveFacing(player));
+        SlotMachineInstance instance = new SlotMachineInstance(plugin, this, player.getUniqueId(), clicked.toBlockLocation(), facing);
         if (!instance.spawn()) {
             plugin.sendMessage(player, Component.text("Failed to create the Slot Machine. Check console for errors.", NamedTextColor.RED));
             return;
         }
 
         machines.put(instance.getMachineId(), instance);
-        machinesByBlock.put(blockKey(clicked.toBlockLocation()), instance.getMachineId());
+        for (Location location : instance.getTrackedBlocks()) {
+            machinesByBlock.put(blockKey(location), instance.getMachineId());
+        }
 
         stack.subtract(1);
         plugin.sendMessage(player, Component.text("Placed a Slot Machine. Only you can break it while sneaking.", NamedTextColor.GOLD));
@@ -154,11 +160,17 @@ public class SlotMachineManager implements Listener, CommandExecutor, TabComplet
         return face.getOppositeFace();
     }
 
-    private boolean canPlace(Location base) {
+    private boolean canPlace(Location base, BlockFace facing) {
         if (!base.getChunk().isLoaded()) {
             base.getChunk().load();
         }
-        return base.getBlock().isEmpty() && base.clone().add(0, 1, 0).getBlock().isEmpty();
+        Location origin = base.toBlockLocation();
+        for (Location location : SlotMachineInstance.previewStructure(origin, facing)) {
+            if (!location.getBlock().isEmpty()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @EventHandler
@@ -234,61 +246,93 @@ public class SlotMachineManager implements Listener, CommandExecutor, TabComplet
 
         World world = machine.getBaseLocation().getWorld();
         Location displayLocation = machine.getVisualLocation();
+        if (world == null) {
+            return;
+        }
+
         if (reward > 0) {
             plugin.getTokenManager().deposit(player.getUniqueId(), reward);
-            if (outcome.matchCount() == 3) {
-                world.playSound(displayLocation, Sound.UI_TOAST_CHALLENGE_COMPLETE, SoundCategory.BLOCKS, 1.0f, 1.0f);
-                world.spawnParticle(Particle.GLOW, displayLocation, 40, 0.4, 0.6, 0.4, 0.02);
+            if (outcome.isJackpotWin()) {
+                playJackpotCelebration(world, displayLocation);
+                plugin.sendMessage(player, Component.text("JACKPOT! Ra's relic lifts you skyward!", NamedTextColor.LIGHT_PURPLE));
+            } else if (outcome.matchCount() == 3) {
+                playGrandWin(world, displayLocation);
+                plugin.sendMessage(player, Component.text("Glorious triple match!", NamedTextColor.AQUA));
             } else {
-                world.playSound(displayLocation, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, SoundCategory.BLOCKS, 0.6f, 1.3f);
-                world.spawnParticle(Particle.FIREWORKS_SPARK, displayLocation, 18, 0.25, 0.4, 0.25, 0.03);
+                playStandardWin(world, displayLocation);
             }
             plugin.sendMessage(player, Component.text("You won " + reward + " Egyptian Token" + (reward == 1 ? "" : "s") + "!", NamedTextColor.GOLD));
         } else {
-            world.playSound(displayLocation, Sound.BLOCK_SAND_FALL, SoundCategory.BLOCKS, 0.7f, 0.8f);
-            world.spawnParticle(Particle.FALLING_DUST, displayLocation, 25, 0.35, 0.4, 0.35, 0.02, Material.SAND.createBlockData());
+            world.playSound(displayLocation, Sound.BLOCK_SAND_FALL, SoundCategory.BLOCKS, 0.8f, 0.75f);
+            world.spawnParticle(Particle.FALLING_DUST, displayLocation, 32, 0.35, 0.4, 0.35, 0.03, Material.SAND.createBlockData());
             plugin.sendMessage(player, Component.text("No matching symbols this time.", NamedTextColor.RED));
         }
     }
 
-    public ItemStack createBodyItem() {
-        ItemStack itemStack = new ItemStack(Material.PAPER);
-        ItemMeta meta = itemStack.getItemMeta();
-        meta.displayName(Component.text("Pharaoh Slot Cabinet", NamedTextColor.GOLD));
-        meta.setCustomModelData(3200);
-        itemStack.setItemMeta(meta);
-        return itemStack;
+    private void playStandardWin(World world, Location displayLocation) {
+        world.playSound(displayLocation, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, SoundCategory.BLOCKS, 0.7f, 1.25f);
+        world.playSound(displayLocation, Sound.BLOCK_AMETHYST_BLOCK_RESONATE, SoundCategory.BLOCKS, 0.5f, 1.5f);
+        world.spawnParticle(Particle.FIREWORKS_SPARK, displayLocation, 24, 0.25, 0.4, 0.25, 0.02);
+        world.spawnParticle(Particle.END_ROD, displayLocation, 12, 0.2, 0.3, 0.2, 0.01);
     }
 
-    public ItemStack createReelItem(int modelData) {
-        ItemStack itemStack = new ItemStack(Material.PAPER);
-        ItemMeta meta = itemStack.getItemMeta();
-        meta.displayName(Component.text("Pharaoh Reel Symbol", NamedTextColor.AQUA));
-        meta.setCustomModelData(modelData);
-        itemStack.setItemMeta(meta);
-        return itemStack;
+    private void playGrandWin(World world, Location displayLocation) {
+        world.playSound(displayLocation, Sound.UI_TOAST_CHALLENGE_COMPLETE, SoundCategory.BLOCKS, 1.1f, 1.1f);
+        world.playSound(displayLocation, Sound.MUSIC_DISC_OTHERSIDE, SoundCategory.RECORDS, 0.45f, 1.4f);
+        world.spawnParticle(Particle.GLOW, displayLocation, 60, 0.45, 0.7, 0.45, 0.04);
+        world.spawnParticle(Particle.FIREWORKS_SPARK, displayLocation, 60, 0.35, 0.55, 0.35, 0.05);
+        world.spawnParticle(Particle.TOTEM, displayLocation, 16, 0.3, 0.5, 0.3, 0.05);
+    }
+
+    private void playJackpotCelebration(World world, Location displayLocation) {
+        world.playSound(displayLocation, Sound.BLOCK_BEACON_ACTIVATE, SoundCategory.BLOCKS, 1.5f, 1.0f);
+        world.playSound(displayLocation, Sound.ENTITY_GHAST_SHOOT, SoundCategory.RECORDS, 0.6f, 0.6f);
+        world.playSound(displayLocation, Sound.ENTITY_ENDER_DRAGON_DEATH, SoundCategory.RECORDS, 1.3f, 0.9f);
+        plugin.getServer().getScheduler().runTaskLater(plugin, () ->
+                world.playSound(displayLocation, Sound.MUSIC_DRAGON, SoundCategory.RECORDS, 0.7f, 1.3f), 6L);
+        plugin.getServer().getScheduler().runTaskLater(plugin, () ->
+                world.playSound(displayLocation, Sound.MUSIC_END, SoundCategory.RECORDS, 0.5f, 0.8f), 14L);
+        plugin.getServer().getScheduler().runTaskLater(plugin, () ->
+                world.playSound(displayLocation, Sound.MUSIC_CREDITS, SoundCategory.RECORDS, 0.6f, 1.05f), 34L);
+        world.spawnParticle(Particle.FIREWORKS_SPARK, displayLocation, 1400, 0.6, 1.0, 0.6, 0.08);
+        world.spawnParticle(Particle.FLAME, displayLocation, 900, 0.5, 0.85, 0.5, 0.05);
+        world.spawnParticle(Particle.SOUL_FIRE_FLAME, displayLocation, 700, 0.45, 0.85, 0.45, 0.04);
+        world.spawnParticle(Particle.DRAGON_BREATH, displayLocation, 520, 0.6, 1.1, 0.6, 0.01);
+        world.spawnParticle(Particle.END_ROD, displayLocation, 420, 0.5, 0.95, 0.5, 0.02);
+        world.spawnParticle(Particle.FLASH, displayLocation, 60, 0.3, 0.5, 0.3, 0.0);
+        world.spawnParticle(Particle.LAVA, displayLocation, 150, 0.4, 0.6, 0.4, 0.03);
+        world.spawnParticle(Particle.CLOUD, displayLocation, 350, 0.6, 0.9, 0.6, 0.02);
+        world.spawnParticle(Particle.EXPLOSION_LARGE, displayLocation, 40, 0.25, 0.35, 0.25, 0.0);
+        world.spawnParticle(Particle.BLOCK_CRACK, displayLocation, 450, 0.5, 0.7, 0.5, 0.07, Material.MAGMA_BLOCK.createBlockData());
+        world.spawnParticle(Particle.GLOW, displayLocation, 520, 0.55, 0.85, 0.55, 0.05);
+        world.spawnParticle(Particle.TOTEM, displayLocation, 110, 0.35, 0.6, 0.35, 0.04);
+    }
+
+    public ItemStack createReelItem(SlotSymbol symbol) {
+        return symbol.createDisplayItem();
     }
 
     public ItemStack createLeverItem() {
         ItemStack itemStack = new ItemStack(Material.STICK);
         ItemMeta meta = itemStack.getItemMeta();
         meta.displayName(Component.text("Pharaoh Lever", NamedTextColor.GOLD));
-        meta.setCustomModelData(3100);
         itemStack.setItemMeta(meta);
         return itemStack;
     }
 
-    public int randomSymbolModel() {
-        return reelSymbolModels.get(random.nextInt(reelSymbolModels.size()));
+    public SlotSymbol randomSymbol() {
+        return reelSymbols.get(random.nextInt(reelSymbols.size()));
     }
 
-    public List<Integer> getReelSymbolModels() {
-        return Collections.unmodifiableList(reelSymbolModels);
+    public List<SlotSymbol> getReelSymbols() {
+        return Collections.unmodifiableList(reelSymbols);
     }
 
     public void removeMachine(SlotMachineInstance instance, boolean dropItem) {
         machines.remove(instance.getMachineId());
-        machinesByBlock.remove(blockKey(instance.getBaseLocation()));
+        for (Location location : instance.getTrackedBlocks()) {
+            machinesByBlock.remove(blockKey(location));
+        }
         instance.despawn();
         if (dropItem) {
             ItemStack item = createSlotMachineItem(1);
